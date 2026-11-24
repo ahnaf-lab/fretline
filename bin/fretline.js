@@ -1,10 +1,22 @@
 #!/usr/bin/env node
 /**
- * Minimal CLI around the string model: pluck one note and render it to a
- * WAV file. Live audio output and tab file generation are later milestones;
- * this exercises the simulation and the keyboard-to-fret mapping end to end.
+ * CLI around the string model. Two commands:
+ *   fretline pluck ...  render a single note to a WAV file (default command)
+ *   fretline play ...   listen for key presses and record a riff to a WAV file
+ * Real-time audio output and tab file generation are later milestones.
  */
-import { pluck, floatTo16BitPCM, writeWavFile, fretToFrequency, keyToFret } from '../src/index.js';
+import { writeFileSync } from 'node:fs';
+import {
+  pluck,
+  floatTo16BitPCM,
+  writeWavFile,
+  fretToFrequency,
+  keyToFret,
+  SessionBuffer,
+  createKeyHandler,
+  listenForKeys,
+  mappedKeys,
+} from '../src/index.js';
 
 function parseArgs(argv) {
   const args = {
@@ -43,8 +55,34 @@ function parseArgs(argv) {
   return args;
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2));
+function parsePlayArgs(argv) {
+  const args = { duration: 1.5, decay: 0.996, seed: 1, out: 'session.wav' };
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = argv[i]?.replace(/^--/, '');
+    const value = argv[i + 1];
+    if (!key || value === undefined) {
+      throw new Error(`Missing value for argument "${argv[i]}"`);
+    }
+    switch (key) {
+      case 'seed':
+        args[key] = Number.parseInt(value, 10);
+        break;
+      case 'duration':
+      case 'decay':
+        args[key] = Number.parseFloat(value);
+        break;
+      case 'out':
+        args[key] = value;
+        break;
+      default:
+        throw new Error(`Unknown argument "--${key}"`);
+    }
+  }
+  return args;
+}
+
+function runPluck(argv) {
+  const args = parseArgs(argv);
   let stringIndex = args.string;
   let fret = args.fret;
 
@@ -71,6 +109,51 @@ function main() {
   writeWavFile(args.out, pcm, sampleRate);
 
   console.log(`Plucked string ${stringIndex} fret ${fret} (${frequency.toFixed(2)} Hz) -> ${args.out}`);
+}
+
+function runPlay(argv) {
+  if (!process.stdin.isTTY) {
+    throw new Error('fretline play requires an interactive terminal (stdin is not a TTY)');
+  }
+
+  const args = parsePlayArgs(argv);
+  const sampleRate = 44100;
+  const buffer = new SessionBuffer(sampleRate);
+  const handleKeyPress = createKeyHandler({
+    buffer,
+    duration: args.duration,
+    decay: args.decay,
+    seed: args.seed,
+  });
+
+  console.log(`fretline: play a riff across ${mappedKeys().length} mapped keys. Press Esc or Ctrl+C to stop and save to ${args.out}.`);
+
+  function save() {
+    writeFileSync(args.out, buffer.toWav());
+    console.log(`\nSaved ${buffer.durationSeconds.toFixed(2)}s of audio -> ${args.out}`);
+    process.exit(0);
+  }
+
+  listenForKeys(
+    (key, timeSeconds) => {
+      const result = handleKeyPress(key, timeSeconds);
+      if (result) {
+        console.log(`string ${result.stringIndex} fret ${result.fret} (${result.frequency.toFixed(2)} Hz)`);
+      }
+    },
+    { onExit: save },
+  );
+}
+
+function main() {
+  const [command, ...rest] = process.argv.slice(2);
+  if (command === 'play') {
+    runPlay(rest);
+  } else if (command === 'pluck') {
+    runPluck(rest);
+  } else {
+    runPluck(process.argv.slice(2));
+  }
 }
 
 main();

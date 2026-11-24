@@ -4,3 +4,6 @@ export { encodeWav, writeWavFile } from './wav.js';
 export { STANDARD_TUNING, midiToFrequency, fretToFrequency } from './tuning.js';
 export { createRng, seededNoiseBuffer } from './prng.js';
 export { KEYBOARD_ROWS, keyToFret, mappedKeys } from './fretboard.js';
+export { SessionBuffer } from './sessionBuffer.js';
+export { createKeyHandler } from './keyHooks.js';
+export { listenForKeys } from './keyListener.js';
