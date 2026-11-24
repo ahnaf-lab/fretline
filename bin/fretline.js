@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 /**
  * Minimal CLI around the string model: pluck one note and render it to a
- * WAV file. The keyboard-to-fret mapping and live audio output are later
- * milestones; this just exercises the simulation end to end.
+ * WAV file. Live audio output and tab file generation are later milestones;
+ * this exercises the simulation and the keyboard-to-fret mapping end to end.
  */
-import { pluck, floatTo16BitPCM, writeWavFile, fretToFrequency } from '../src/index.js';
+import { pluck, floatTo16BitPCM, writeWavFile, fretToFrequency, keyToFret } from '../src/index.js';
 
 function parseArgs(argv) {
-  const args = { string: 0, fret: 0, duration: 1.5, decay: 0.996, seed: 1, out: 'pluck.wav' };
+  const args = {
+    string: 0,
+    fret: 0,
+    key: undefined,
+    duration: 1.5,
+    decay: 0.996,
+    seed: 1,
+    out: 'pluck.wav',
+  };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
     const value = argv[i + 1];
@@ -24,8 +32,9 @@ function parseArgs(argv) {
       case 'decay':
         args[key] = Number.parseFloat(value);
         break;
+      case 'key':
       case 'out':
-        args.out = value;
+        args[key] = value;
         break;
       default:
         throw new Error(`Unknown argument "--${key}"`);
@@ -36,7 +45,19 @@ function parseArgs(argv) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const frequency = fretToFrequency(args.string, args.fret);
+  let stringIndex = args.string;
+  let fret = args.fret;
+
+  if (args.key !== undefined) {
+    const position = keyToFret(args.key);
+    if (!position) {
+      throw new Error(`Key "${args.key}" is not mapped to any fret`);
+    }
+    stringIndex = position.stringIndex;
+    fret = position.fret;
+  }
+
+  const frequency = fretToFrequency(stringIndex, fret);
   const sampleRate = 44100;
 
   const samples = pluck({
@@ -49,7 +70,7 @@ function main() {
   const pcm = floatTo16BitPCM(samples);
   writeWavFile(args.out, pcm, sampleRate);
 
-  console.log(`Plucked string ${args.string} fret ${args.fret} (${frequency.toFixed(2)} Hz) -> ${args.out}`);
+  console.log(`Plucked string ${stringIndex} fret ${fret} (${frequency.toFixed(2)} Hz) -> ${args.out}`);
 }
 
 main();
