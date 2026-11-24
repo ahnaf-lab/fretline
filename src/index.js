@@ -7,3 +7,4 @@ export { KEYBOARD_ROWS, keyToFret, mappedKeys } from './fretboard.js';
 export { SessionBuffer } from './sessionBuffer.js';
 export { createKeyHandler } from './keyHooks.js';
 export { listenForKeys } from './keyListener.js';
+export { TabRecorder, formatTabText, parseTabText, replayEvents } from './tabRecorder.js';

@@ -17,10 +17,12 @@ import { keyToFret } from './fretboard.js';
  * @param {number} [options.decay=0.996] - Pluck decay (0-1).
  * @param {number} [options.seed=1] - Base seed; each pluck advances it so repeated
  *   strikes of the same key are not bit-identical noise bursts.
+ * @param {import('./tabRecorder.js').TabRecorder} [options.recorder] - If given, every
+ *   mapped key press is logged to it for later export as a tab file.
  * @returns {(key: string, timeSeconds: number) => (object|null)} Handler that returns
  *   the plucked position plus pluck count, or null if the key is unmapped.
  */
-export function createKeyHandler({ buffer, duration = 1.5, decay = 0.996, seed = 1 } = {}) {
+export function createKeyHandler({ buffer, duration = 1.5, decay = 0.996, seed = 1, recorder } = {}) {
   if (!buffer) {
     throw new Error('createKeyHandler requires a session buffer');
   }
@@ -41,6 +43,7 @@ export function createKeyHandler({ buffer, duration = 1.5, decay = 0.996, seed =
       seed: seed + pluckCount - 1,
     });
     buffer.mixAt(timeSeconds, samples);
+    recorder?.record({ timeSeconds, stringIndex: position.stringIndex, fret: position.fret });
 
     return { ...position, key, timeSeconds, pluckCount };
   };

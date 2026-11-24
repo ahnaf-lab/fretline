@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * CLI around the string model. Two commands:
- *   fretline pluck ...  render a single note to a WAV file (default command)
- *   fretline play ...   listen for key presses and record a riff to a WAV file
- * Real-time audio output and tab file generation are later milestones.
+ * CLI around the string model. Three commands:
+ *   fretline pluck ...   render a single note to a WAV file (default command)
+ *   fretline play ...    listen for key presses and record a riff to a WAV file
+ *   fretline replay ...  replay a tab file saved by `play --tab` into a WAV file
+ * Real-time audio output is a later milestone.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import {
   pluck,
   floatTo16BitPCM,
@@ -16,6 +17,9 @@ import {
   createKeyHandler,
   listenForKeys,
   mappedKeys,
+  TabRecorder,
+  parseTabText,
+  replayEvents,
 } from '../src/index.js';
 
 function parseArgs(argv) {
@@ -56,7 +60,7 @@ function parseArgs(argv) {
 }
 
 function parsePlayArgs(argv) {
-  const args = { duration: 1.5, decay: 0.996, seed: 1, out: 'session.wav' };
+  const args = { duration: 1.5, decay: 0.996, seed: 1, out: 'session.wav', tab: undefined };
   for (let i = 0; i < argv.length; i += 2) {
     const key = argv[i]?.replace(/^--/, '');
     const value = argv[i + 1];
@@ -72,11 +76,45 @@ function parsePlayArgs(argv) {
         args[key] = Number.parseFloat(value);
         break;
       case 'out':
+      case 'tab':
         args[key] = value;
         break;
       default:
         throw new Error(`Unknown argument "--${key}"`);
     }
+  }
+  return args;
+}
+
+function parseReplayArgs(argv) {
+  const args = { tab: undefined, out: 'replay.wav', duration: 1.5, decay: 0.996, seed: 1, sampleRate: 44100 };
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = argv[i]?.replace(/^--/, '');
+    const value = argv[i + 1];
+    if (!key || value === undefined) {
+      throw new Error(`Missing value for argument "${argv[i]}"`);
+    }
+    switch (key) {
+      case 'seed':
+        args[key] = Number.parseInt(value, 10);
+        break;
+      case 'duration':
+      case 'decay':
+        args[key] = Number.parseFloat(value);
+        break;
+      case 'sample-rate':
+        args.sampleRate = Number.parseInt(value, 10);
+        break;
+      case 'tab':
+      case 'out':
+        args[key] = value;
+        break;
+      default:
+        throw new Error(`Unknown argument "--${key}"`);
+    }
+  }
+  if (!args.tab) {
+    throw new Error('replay requires --tab <path>');
   }
   return args;
 }
@@ -119,11 +157,13 @@ function runPlay(argv) {
   const args = parsePlayArgs(argv);
   const sampleRate = 44100;
   const buffer = new SessionBuffer(sampleRate);
+  const recorder = new TabRecorder();
   const handleKeyPress = createKeyHandler({
     buffer,
     duration: args.duration,
     decay: args.decay,
     seed: args.seed,
+    recorder,
   });
 
   console.log(`fretline: play a riff across ${mappedKeys().length} mapped keys. Press Esc or Ctrl+C to stop and save to ${args.out}.`);
@@ -131,6 +171,10 @@ function runPlay(argv) {
   function save() {
     writeFileSync(args.out, buffer.toWav());
     console.log(`\nSaved ${buffer.durationSeconds.toFixed(2)}s of audio -> ${args.out}`);
+    if (args.tab) {
+      writeFileSync(args.tab, recorder.toTabText());
+      console.log(`Saved tab (${recorder.events.length} notes) -> ${args.tab}`);
+    }
     process.exit(0);
   }
 
@@ -145,10 +189,26 @@ function runPlay(argv) {
   );
 }
 
+function runReplay(argv) {
+  const args = parseReplayArgs(argv);
+  const text = readFileSync(args.tab, 'utf8');
+  const events = parseTabText(text);
+  const buffer = replayEvents(events, {
+    sampleRate: args.sampleRate,
+    duration: args.duration,
+    decay: args.decay,
+    seed: args.seed,
+  });
+  writeFileSync(args.out, buffer.toWav());
+  console.log(`Replayed ${events.length} notes from ${args.tab} -> ${args.out}`);
+}
+
 function main() {
   const [command, ...rest] = process.argv.slice(2);
   if (command === 'play') {
     runPlay(rest);
+  } else if (command === 'replay') {
+    runReplay(rest);
   } else if (command === 'pluck') {
     runPluck(rest);
   } else {
