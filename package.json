@@ -1,0 +1,17 @@
+{
+  "name": "fretline",
+  "version": "0.1.0",
+  "description": "A physically-modeled six-string guitar for your keyboard, built on a Karplus-Strong string simulation.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "fretline": "./bin/fretline.js"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
